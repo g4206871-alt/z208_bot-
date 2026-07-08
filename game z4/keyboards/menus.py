@@ -86,5 +86,3 @@ def get_admin_menu():
                               callback_data='main_menu')]
     ]
     return InlineKeyboardMarkup(keyboard)
-
-
