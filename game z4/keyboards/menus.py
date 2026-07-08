@@ -93,3 +93,13 @@ def get_contact_keyboard():
     keyboard = [
         [KeyboardButton("📱 اشتراک‌گذاری شماره تماس", request_contact=True)]]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    def get_games_menu():
+    """منوی بازی‌ها"""
+    keyboard = [
+        [InlineKeyboardButton("😂 جوک", callback_data='game_joke')],
+        [InlineKeyboardButton("🧩 معما", callback_data='game_riddle')],
+        [InlineKeyboardButton("🎯 حدس کلمه", callback_data='game_word_guess')],
+        [InlineKeyboardButton("🏆 جدول امتیازات", callback_data='game_leaderboard')],
+        [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data='main_menu')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
