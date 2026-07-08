@@ -6,8 +6,10 @@ from database import db
 
 # ایمپورت هندلرها
 from handlers.start import start, main_menu_callback
-from handlers.games import (games_menu, tell_joke, ask_riddle, check_answer,
-                            start_word_guess, show_leaderboard)
+from handlers.anime_handler import (anime_menu, show_top_anime, show_new_anime,
+                                     show_anime_genre_menu, show_anime_by_genre,
+                                     show_classic_anime, show_movie_anime,
+                                     random_anime, search_anime)
 from handlers.ai_assistant import ai_menu, handle_ai_query
 from handlers.support import support_menu, handle_support_message, rate_bot
 from handlers.news import show_news, show_projects
@@ -34,33 +36,45 @@ class Z208Bot:
         self.app.add_handler(CommandHandler("start", start))
         self.app.add_handler(CommandHandler("admin", self.admin_command))
 
-        # Callback handlers
+        # ============ منوی اصلی ============
         self.app.add_handler(CallbackQueryHandler(
             main_menu_callback, pattern='^main_menu$'))
+
+        # انیمه‌ها
         self.app.add_handler(CallbackQueryHandler(
-            games_menu, pattern='^menu_games$'))
+            anime_menu, pattern='^menu_anime$'))
+        self.app.add_handler(CallbackQueryHandler(
+            show_top_anime, pattern='^anime_top$'))
+        self.app.add_handler(CallbackQueryHandler(
+            show_new_anime, pattern='^anime_new$'))
+        self.app.add_handler(CallbackQueryHandler(
+            show_anime_genre_menu, pattern='^anime_genre$'))
+        self.app.add_handler(CallbackQueryHandler(
+            show_anime_by_genre, pattern='^anime_genre_'))
+        self.app.add_handler(CallbackQueryHandler(
+            show_classic_anime, pattern='^anime_classic$'))
+        self.app.add_handler(CallbackQueryHandler(
+            show_movie_anime, pattern='^anime_movie$'))
+        self.app.add_handler(CallbackQueryHandler(
+            random_anime, pattern='^anime_random$'))
+
+        # هوش مصنوعی
         self.app.add_handler(CallbackQueryHandler(
             ai_menu, pattern='^menu_ai$'))
+
+        # اخبار و پروژه‌ها
         self.app.add_handler(CallbackQueryHandler(
             show_news, pattern='^menu_news$'))
         self.app.add_handler(CallbackQueryHandler(
             show_projects, pattern='^menu_projects$'))
+
+        # پشتیبانی و امتیازدهی
         self.app.add_handler(CallbackQueryHandler(
             support_menu, pattern='^menu_support$'))
         self.app.add_handler(CallbackQueryHandler(
             rate_bot, pattern='^menu_rate$'))
 
-        # بازی‌ها
-        self.app.add_handler(CallbackQueryHandler(
-            tell_joke, pattern='^game_joke$'))
-        self.app.add_handler(CallbackQueryHandler(
-            ask_riddle, pattern='^game_riddle$'))
-        self.app.add_handler(CallbackQueryHandler(
-            start_word_guess, pattern='^game_word_guess$'))
-        self.app.add_handler(CallbackQueryHandler(
-            show_leaderboard, pattern='^game_leaderboard$'))
-
-        # ادمین
+        # ============ پنل ادمین ============
         self.app.add_handler(CallbackQueryHandler(
             admin_menu, pattern='^admin_menu$'))
         self.app.add_handler(CallbackQueryHandler(
@@ -70,7 +84,7 @@ class Z208Bot:
         self.app.add_handler(CallbackQueryHandler(
             start_broadcast, pattern='^admin_broadcast$'))
 
-        # پیام‌های متنی
+        # ============ پیام‌های متنی ============
         self.app.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND, self.handle_text_messages))
 
@@ -90,8 +104,6 @@ class Z208Bot:
 
         if user_state == 'ai_chat':
             await handle_ai_query(update, context)
-        elif user_state == 'riddle_answer':
-            await check_answer(update, context)
         elif user_state == 'support_chat':
             await handle_support_message(update, context)
         elif user_state == 'broadcast_message':
