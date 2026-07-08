@@ -86,3 +86,10 @@ def get_admin_menu():
                               callback_data='main_menu')]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_contact_keyboard():
+    """کیبورد اشتراک‌گذاری تماس"""
+    keyboard = [
+        [KeyboardButton("📱 اشتراک‌گذاری شماره تماس", request_contact=True)]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
