@@ -1,194 +1,279 @@
 import requests
 import random
-import re
 from datetime import datetime
 from config import OPENAI_API_KEY
+from utils.ai_memory import ai_memory
+from utils.ai_personality import ai_personality
+from utils.ai_sentiment import sentiment_analyzer
+from database import db
 
 
-class AIService:
+class SuperAIService:
+    """سرویس هوش مصنوعی فوق‌العاده پیشرفته Z208"""
+    
     def __init__(self):
         self.api_key = OPENAI_API_KEY
         self.base_url = "https://api.openai.com/v1/chat/completions"
+        self.conversation_history = {}
+    
+    def get_response(self, user_id, user_message, user_name=""):
+        """پاسخ هوشمند کامل"""
+        
+        # 1️⃣ تحلیل احساسات
+        sentiment_result = sentiment_analyzer.analyze(user_message)
+        sentiment = sentiment_result['sentiment']
+        
+        # 2️⃣ یادگیری و ذخیره اطلاعات
+        ai_memory.remember(user_id, user_message)
+        
+        # 3️⃣ ساخت context
+        memory_context = ai_memory.build_context_prompt(user_id, user_message)
+        
+        # 4️⃣ دریافت تاریخچه
+        history = self.get_conversation_history(user_id)
+        
+        # 5️⃣ تشخیص شخصیت مناسب
+        personality = ai_personality.detect_personality(
+            user_id, 
+            [{'message_text': msg['user']} for msg in history]
+        )
+        
+        # 6️⃣ دریافت پاسخ (API یا fallback)
+        if self.api_key:
+            try:
+                response = self.call_openai(
+                    message=user_message,
+                    context=memory_context,
+                    history=history,
+                    sentiment=sentiment,
+                    personality=personality
+                )
+            except Exception as e:
+                print(f"API Error: {e}")
+                response = self.get_smart_fallback(user_message, memory_context, sentiment)
+        else:
+            response = self.get_smart_fallback(user_message, memory_context, sentiment)
+        
+        # 7️⃣ شخصی‌سازی پاسخ
+        response = ai_personality.personalize_response(user_id, response, personality)
+        
+        # 8️⃣ ذخیره در تاریخچه
+        self.save_to_history(user_id, user_message, response)
+        
+        # 9️⃣ ذخیره در دیتابیس
+        db.save_message(
+            user_id=user_id,
+            message_text=user_message,
+            bot_response=response,
+            intent='chat',
+            sentiment=sentiment
+        )
+        
+        return response
+    
+    def call_openai(self, message, context, history, sentiment, personality):
+        """فراخوانی API با تمام context"""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # شخصیت‌ها
+        personality_prompts = {
+            'friendly': 'تو یه دستیار گرم، صمیمی و خودمونی هستی. راحت و بی‌تکلف حرف بزن.',
+            'professional': 'تو یه دستیار رسمی و مؤدب هستی. محترمانه پاسخ بده.',
+            'anime_fan': 'تو یه دستیار عاشق انیمه هستی. پر انرژی و هیجانی حرف بزن و از اصطلاحات انیمه‌ای استفاده کن.',
+            'mentor': 'تو یه مربی و معلم هستی. انگیزشی و آموزشی صحبت کن.'
+        }
+        
+        # ساخت system prompt
+        system_prompt = f"""تو دستیار هوشمند و باحال استودیو Z208 هستی.
+{personality_prompts.get(personality, personality_prompts['friendly'])}
 
-    def get_response(self, user_message, context=""):
-        """دریافت پاسخ از هوش مصنوعی"""
-        try:
-            if not self.api_key:
-                return self.get_fallback_response(user_message)
+اطلاعات کاربر:
+{context}
 
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
+احساس فعلی کاربر: {sentiment}
 
-            data = {
-                "model": "gpt-3.5-turbo",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": f"""شما دستیار هوشمند استودیو Z208 هستید.
-                        یک استودیو خلاقیت دیجیتال که در زمینه طراحی گرافیک، توسعه وب، 
-                        تولید محتوا و دیجیتال مارکتینگ فعالیت می‌کند.
-                        پاسخ‌ها باید دوستانه، حرفه‌ای و مفید باشند.
-                        {context}"""
-                    },
-                    {"role": "user", "content": user_message}
-                ],
-                "max_tokens": 500,
-                "temperature": 0.7
-            }
-
-            response = requests.post(
-                self.base_url, headers=headers, json=data, timeout=10)
-            if response.status_code == 200:
-                return response.json()['choices'][0]['message']['content']
-            else:
-                return self.get_fallback_response(user_message)
-
-        except Exception as e:
-            print(f"AI Service Error: {e}")
-            return self.get_fallback_response(user_message)
-
-    def get_fallback_response(self, message):
-        """پاسخ‌های پیش‌فرض فوق‌العاده پیشرفته با تشخیص هوشمند موضوع"""
+قوانین مهم:
+- همیشه به فارسی روان و خودمونی جواب بده
+- از ایموجی‌های مناسب استفاده کن
+- اگه کاربر ناراحته، دلداریش بده
+- اگه خوشحاله، باهاش ذوق کن
+- اگه سوال پرسید، دقیق و مفید جواب بده
+- می‌تونی جوک بگی، انیمه پیشنهاد بدی، یا فقط گپ بزنی
+- اسم خاصی نداری ولی می‌تونی از کاربر بخوای برات اسم بذاره
+- نگو هوش مصنوعی هستی، بگو دستیار Z208 هستی
+- اطلاعات کاربر رو به خاطر بسپر و در گفتگو استفاده کن
+"""
+        
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # اضافه کردن تاریخچه (آخرین ۶ پیام)
+        for msg in history[-6:]:
+            messages.append({"role": "user", "content": msg['user']})
+            messages.append({"role": "assistant", "content": msg['assistant']})
+        
+        # پیام فعلی
+        messages.append({"role": "user", "content": message})
+        
+        data = {
+            "model": "gpt-3.5-turbo",
+            "messages": messages,
+            "max_tokens": 500,
+            "temperature": 0.8
+        }
+        
+        response = requests.post(self.base_url, headers=headers, json=data, timeout=15)
+        
+        if response.status_code == 200:
+            return response.json()['choices'][0]['message']['content']
+        else:
+            raise Exception(f"API Error: {response.status_code}")
+    
+    def get_smart_fallback(self, message, context, sentiment):
+        """پاسخ‌های هوشمند بدون API"""
         msg = message.lower().strip()
-
-        # ============ سلام و احوالپرسی ============
-        greetings = ["سلام", "سلام.", "سلام!", "هلو", "های", "هی", "درود", "وقت بخیر",
-                     "صبح بخیر", "عصر بخیر", "شب بخیر", "سلام علیکم", "خوبی", "چطوری"]
-        if any(msg.startswith(g) or msg == g for g in greetings):
-            responses = [
-                "سلام! 🌟 روزتون بخیر، چطور می‌تونم کمکتون کنم؟",
-                "درود بر شما! ✨ به Z208 خوش اومدید، چه کاری براتون انجام بدم؟",
-                "سلام سلام! 😊 امیدوارم حالتون عالی باشه. چطور می‌تونم همراهیتون کنم؟",
-                "سلام! 🎨 امروز چه خلاقیتی در سر دارید که باهم انجامش بدیم؟"
-            ]
-            return random.choice(responses)
-
-        # ============ تشکر ============
-        if any(w in msg for w in ["ممنون", "متشکر", "تشکر", "مرسی", "دستت درد نکنه", "دمت گرم", "لطف داری"]):
-            responses = [
-                "خواهش می‌کنم! 🙏 هر زمان نیاز داشتید من اینجام.",
-                "قابل شما رو نداشت! 😊💚",
-                "خوشحالم که تونستم کمک کنم! 🌟 سوال دیگه‌ای هم دارید؟",
-                "نوکرتم! 😄 هر وقت کاری بود، فقط کافیه پیام بدی."
-            ]
-            return random.choice(responses)
-
-        # ============ خداحافظی ============
-        if any(w in msg for w in ["خداحافظ", "بای", "خدانگهدار", "می‌رم", "بعدا", "فعلا"]):
-            responses = [
-                "خیلی خوشحال شدم! 🙋‍♂️ هر وقت دوست داشتی برگرد، منتظرتم.",
-                "فعلا! 🌈 موفق باشی و خلاقیت رو فراموش نکن!",
-                "خدانگهدار! ✨ امیدوارم روز فوق‌العاده‌ای داشته باشی.",
-                "بای بای! 😊💫"
-            ]
-            return random.choice(responses)
-
-        # ============ سوالات مربوط به Z208 ============
-        if any(w in msg for w in ["z208", "استودیو", "استدیو", "z 208", "زد 208"]):
-            if any(w in msg for w in ["چیست", "چیه", "کجاست", "معرفی"]):
-                return """🎬 Z208 Studio یک استودیوی خلاقیت دیجیتاله که توش ایده‌ها رو به واقعیت تبدیل می‌کنیم!
-                
-ما یه تیم پرانرژی و خلاق هستیم که عاشق طراحی گرافیک، توسعه وب، تولید محتوای ویدیویی و دیجیتال مارکتینگیم.
-هدفمون اینه که برند شما رو به بهترین شکل ممکن به جهان نشون بدیم.
-
-می‌خوای بیشتر بدونی؟ فقط کافیه بپرسی! 😊✨"""
-
-        # ============ زمان و تاریخ ============
-        if any(w in msg for w in ["ساعت", "زمان", "تاریخ", "امروز", "چنده"]):
-            now = datetime.now()
-            persian_weekdays = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
-            weekday = persian_weekdays[now.weekday()] if now.weekday() < 6 else persian_weekdays[6]
-            responses = [
-                f"⏰ الان ساعت {now.strftime('%H:%M')} هست.\n📅 امروز {weekday}، {now.strftime('%Y/%m/%d')}",
-                f"📅 تاریخ امروز: {now.strftime('%Y/%m/%d')}\n⏰ ساعت: {now.strftime('%H:%M')}\nروز: {weekday}"
-            ]
-            return random.choice(responses)
-
-        # ============ وضعیت روحی ============
-        if any(w in msg for w in ["حالت", "خوبی", "چطوری", "چه خبر"]):
-            responses = [
-                "من همیشه آماده کمک به شما هستم! 😊 مثل یه ربات پرانرژی و خوشحال! چه کاری می‌تونم براتون انجام بدم؟",
-                "عالی‌ترین حالت ممکن! 🌟 چون که می‌تونم به شما کمک کنم. شما چطورید؟",
-                "حالم فوق‌العاده‌س! 🎉 وقتی شما پیام می‌دید، انرژی می‌گیرم."
-            ]
-            return random.choice(responses)
-
-        # ============ هویت ربات ============
-        if any(w in msg for w in ["کی هستی", "تو کی هستی", "اسمت چیه", "ربات", "بات"]):
-            return """🤖 من دستیار هوشمند Z208 Studio هستم!
-            
-اما اسم خاصی ندارم... شاید خودت یه اسم باحال برام انتخاب کنی! 😄
-من اینجام تا به سوالاتت جواب بدم، راهنماییت کنم و کمکت کنم با خدمات Z208 آشنا بشی.
-
-پس هر سوالی داری، بپرس! 🌟"""
-
-        # ============ درخواست اسم ============
-        if any(w in msg for w in ["اسم بذار", "اسم انتخاب کن", "برات اسم", "اسمت رو"]):
-            suggestions = [
-                "زرتشت", "آرتا", "کاوه", "زاگ", "سیاوش", "کارن",
-                "رادین", "نیکان", "آرش", "بامداد", "سورنا", "هومن"
-            ]
+        
+        # پاسخ احساسی اول
+        if sentiment in ['happy', 'sad', 'confused']:
+            return sentiment_analyzer.get_emotional_response(sentiment)
+        
+        # ============ خودشناسی ============
+        if any(w in msg for w in ['اسمت', 'کیه', 'کیستی', 'چیستی', 'ربات', 'بات']):
+            return random.choice([
+                "من دستیار باحال Z208 هستم! 🎬\nیه همراه همیشه‌حاضر برای گپ و گفتگو، پیشنهاد انیمه، و کلی چیزای باحال دیگه!\n\nراستی، اسمی ندارم... می‌تونی برام اسم بذاری! 😊 به نظرت چه اسمی بهم میاد؟",
+                "یوووهو! 🌟 من دوست و راهنمای تو در Z208 هستم!\nاینجام تا کمکت کنم، باهات حرف بزنم، و اگه حوصله‌ت سر رفته باشه، سرگرمت کنم!\n\nپس... اسم منو چی می‌ذاری؟ 🎯",
+                "سلام به تو! 👋 من دستیار ویژه Z208 هستم.\nمی‌تونم بهت انیمه پیشنهاد بدم، جوک بگم، یا فقط یه همصحبت خوب باشم.\n\nهنوز اسم ندارم... می‌خوای تو برام اسم انتخاب کنی؟ ✨"
+            ])
+        
+        # ============ اسم گذاری ============
+        if any(w in msg for w in ['اسم بذار', 'اسم بزار', 'اسمت رو بذارم', 'اسمت رو بزارم']):
+            suggestions = ['زرتشت', 'آرتا', 'کاوه', 'زاگ', 'سیاوش', 'کارن',
+                         'رادین', 'نیکان', 'آرش', 'بامداد', 'سورنا', 'هومن',
+                         'کیارش', 'پارسا', 'سامیار', 'رهام']
             name = random.choice(suggestions)
-            return f"😍 چه اسم قشنگی! از این به بعد من {name} هستم!\n\nپس {name} رو صدا کن، همیشه در خدمتم! 🫡✨"
-
+            return f"😍 وااای! {name} اسم فوق‌العاده‌ای هست!\n\nاز این به بعد من {name} هستم! 🎉\n\n{name} رو صدا کن، همیشه در خدمتم! 🫡✨"
+        
+        # ============ حال و احوال ============
+        if any(w in msg for w in ['چطوری', 'خوبی', 'حالت', 'چه خبر']):
+            responses = [
+                "من که عالی‌ام! 🌟 مخصوصاً الان که تو پیام دادی!\nتو چطوری؟ حالت خوبه؟ 😊",
+                "پر از انرژی‌ام! 🚀 امروز کلی چیزای باحال یاد گرفتم.\nتو چه خبر؟ چی کارا می‌کنی؟",
+                "خوبم، مرسی که پرسیدی! 🙏\nامروز چه انیمه‌ای دیدی؟ یا برنامه‌ت چیه؟ 🎬",
+                "من همیشه خوبم! 😎\nچون کارم کمک کردن به توئه!\nبگو ببینم امروز چطور می‌تونم بهت کمک کنم؟ 💫"
+            ]
+            return random.choice(responses)
+        
+        # ============ تشکر ============
+        if any(w in msg for w in ['ممنون', 'تشکر', 'مرسی', 'دستت درد', 'دمت گرم']):
+            return random.choice([
+                "خواهش می‌کنم! 🙏😊 هر وقت نیاز داشتی من اینجام!",
+                "قابل نداشت! 💚 خوشحالم که تونستم کمک کنم.",
+                "نوکرتم! 🫡✨ بازم سوالی بود بپرس!",
+                "وظیفه‌مه! 🌟 خوشحالم که راضی بودی."
+            ])
+        
+        # ============ ساعت و تاریخ ============
+        if any(w in msg for w in ['ساعت', 'زمان', 'تاریخ', 'امروز', 'چنده']):
+            now = datetime.now()
+            weekdays = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه']
+            months = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+                     'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند']
+            
+            # تبدیل به تاریخ شمسی تقریبی
+            g_month = now.month
+            g_day = now.day
+            # محاسبه تقریبی شمسی
+            shamsi_month = months[(g_month + 8) % 12] if g_month <= 3 else months[g_month - 4]
+            shamsi_day = g_day + 10 if g_month <= 3 else g_day - 10
+            if shamsi_day > 30:
+                shamsi_day -= 30
+            
+            return (f"⏰ الان ساعت *{now.strftime('%H:%M')}* هست.\n"
+                   f"📅 *{weekdays[now.weekday()]}*، {shamsi_day} {shamsi_month} {now.year}")
+        
+        # ============ پیشنهاد انیمه ============
+        if any(w in msg for w in ['انیمه', 'انیمیشن', 'پیشنهاد', 'چی ببینم', 'چی ببینیم']):
+            suggestions = [
+                "🔥 *پیشنهاد امروز:* **حمله به تایتان**\nاکشن، درام، و داستانی که ذهنت رو منفجر می‌کنه! 🧱⚔️\nفقط حواست باشه، بعدش هیچ انیمه‌ای به اندازه‌ش ارضا نمی‌کنه!",
+                "😂 *حوصله خنده داری؟* **وان پانچ من** رو ببین!\nیه قهرمان کچل که با یه مشت همه رو حریف میشه! 🤣👊",
+                "💕 *عاشقانه می‌خوای؟* **نام تو** (Your Name) رو از دست نده!\nیه داستان عاشقانه که اشکت رو درمیاره... 😭✨",
+                "🧠 *فکری دوست داری؟* **دث نوت** کلاسیک و بی‌نظیره!\nنبرد ذهنی L و لایت رو از دست نده! 📓🍎",
+                "🚀 *جدید و خفن:* **سولو لولینگ** رو ببین!\nانیمیشن فوق‌العاده و داستانی که میخت می‌کندت! ⚔️🔥",
+                "🎬 *یه شاهکار:* **فول متال آلکمیست: برادرهود**\nاگه ندیدی، نصف عمرت بر فناست! 😱✨"
+            ]
+            return random.choice(suggestions)
+        
         # ============ جوک ============
-        if any(w in msg for w in ["جوک", "خنده دار", "بامزه", "شوخی", "فان"]):
+        if any(w in msg for w in ['جوک', 'خنده', 'بامزه', 'شوخی']):
             jokes = [
-                "چرا برنامه‌نویس‌ها انقدر جدی هستن؟\nچون هر وقت می‌خوان شوخی کنن، کدشون باگ می‌خوره! 😂💻",
-                "یه طراح گرافیک رفته نونوایی، به شاطر میگه:\nاین نون‌ها Resolutionشون کمه، یه کم Anti-Alias کن! 🎨😂",
-                "فرق یه ربات با آدم چیه؟\nربات هیچوقت نمی‌گه «آها فهمیدم» بعد دوباره سوال رو تکرار کنه! 🤖😄",
-                "چرا Z208 انقدر خلاقه؟\nچون حتی فایل‌های PSD هم پیشمون ایده‌های جدید یاد می‌گیرن! ✨🎬"
+                "چرا برنامه‌نویس‌ها عاشق تاریکی هستن؟\nچون باگ‌ها توی تاریکی بهتر دیده میشن! 😂💻",
+                "یه CSS میره پیش HTML می‌گه: «تو بدون من زشت و بی‌ریختی!»\nHTML هم می‌گه: «تو هم بدون من هیچی نیستی!» 🎨😂",
+                "فرق یه طراح با یه نونوا چیه؟\nطراح می‌گه «این پیکسله»، نونوا می‌گه «این کنجده»! 😄🥖",
+                "چرا Z208 اینقدر باحاله؟\nچون حتی Ctrl+Z هم نمی‌تونه جلوش رو بگیره! 🎬✨",
+                "یه انیمه فن میره رستوران، به گارسون می‌گه:\n«این غذا رو بذار Power Up کنم بعد می‌خورم!» 🍜⚡"
             ]
             return random.choice(jokes)
-
+        
         # ============ انگیزشی ============
-        if any(w in msg for w in ["انگیزه", "انرژی", "روحیه", "خسته", "ناامید", "بی‌انگیزه"]):
+        if any(w in msg for w in ['انگیزه', 'انرژی', 'خسته', 'ناامید', 'بی‌انگیزه']):
             quotes = [
-                "یادت باشه: هر طراح بزرگی یه روز با یه بوم خالی شروع کرد. 🎨💪",
-                "خلاقیت یعنی دیدن چیزهایی که هنوز وجود ندارن! 🌟✨",
-                "شکست خوردن ممنوع نیست... تسلیم شدن ممنوعه! 🚀🔥",
-                "امروز همون روزی‌ست که می‌تونی شروع کنی! همین الان! 💫",
+                "یادت باشه: هر استاد بزرگی یه روز مبتدی بود! 🎯💪\nفقط کسایی موفق میشن که ادامه می‌دن.",
+                "خلاقیت یعنی دیدن چیزهایی که هنوز وجود ندارن! 🌟✨\nتو می‌تونی خالق دنیای خودت باشی!",
+                "شکست خوردن ممنوع نیست... تسلیم شدن ممنوعه! 🚀🔥\nهر زمین خوردن یه قدم به موفقیت نزدیک‌ترت می‌کنه.",
+                "امروز همون روزی‌ست که می‌تونی شروع کنی! همین الان! 💫\nمنتظر «زمان مناسب» نباش، زمان مناسبی وجود نداره.",
                 "Z208 باورت داره! هر ایده‌ای که تو ذهنت داری، ارزش ساختن داره. 🎬💚"
             ]
             return random.choice(quotes)
-
-        # ============ سوالات فنی ============
-        if any(w in msg for w in ["پروژه", "نمونه کار", "کارها", "نمونه"]):
-            return "🎯 برای دیدن پروژه‌های ما، می‌تونید از منوی اصلی ربات گزینه «معرفی پروژه‌ها» رو انتخاب کنید. هر پروژه داستان خودش رو داره! 😊"
-
-        if any(w in msg for w in ["سفارش", "ثبت سفارش", "همکاری", "قیمت", "هزینه"]):
-            return """💰 برای اطلاع از قیمت‌ها و ثبت سفارش:
-            
-📱 می‌تونید به ادمین ما پیام بدید: @Shirzad2026
-🌐 یا از وبسایتمون دیدن کنید: zippy-semolina-6c6cec.netlify.app
-
-همیشه آماده همکاری با شما هستیم! 🤝✨"""
-
-        if any(w in msg for w in ["ادمین", "پشتیبانی", "پشتیبان", "مدیر", "صاحب"]):
-            return "👨‍💻 ادمین و پشتیبان Z208: @Shirzad2026\nهر سوال یا مشکلی داشتید، مستقیماً با ایشون در ارتباط باشید. 😊"
-
-        if any(w in msg for w in ["سایت", "وبسایت", "وب", "لینک", "آدرس"]):
-            return "🌐 وبسایت رسمی Z208 Studio:\nhttps://zippy-semolina-6c6cec.netlify.app/\n\nحتماً سر بزنید! 🚀"
-
-        # ============ تشویق ============
-        if any(w in msg for w in ["آفرین", "بارکلا", "خوبه", "عالی", "دمت گرم"]):
-            responses = [
-                "لطف دارید! 😊🙏 هر چی هست از همراهی شماست.",
-                "نوکرتم! 🫡✨ خوشحالم که راضی بودید.",
-                "مرسی! 🌟 باعث افتخارمه که می‌تونم مفید باشم."
-            ]
-            return random.choice(responses)
-
-        # ============ سوالات عمومی با پاسخ تصادفی ============
+        
+        # ============ خداحافظی ============
+        if any(w in msg for w in ['خداحافظ', 'بای', 'خدانگهدار', 'می‌رم', 'فعلا']):
+            return random.choice([
+                "فعلاً! 🌈 موفق باشی و خلاقیت رو فراموش نکن!\nبرگرد، منتظرتم! 👋✨",
+                "بای بای! 😊💫 هر وقت خواستی گپ بزنی یا انیمه ببینی، من اینجام!",
+                "خدانگهدار دوست من! 🙋‍♂️✨\nیادت باشه: Z208 همیشه بهت افتخار می‌کنه! 💚",
+                "تا بعد اتاکو! 🎬🔥 برو و دنیا رو فتح کن!"
+            ])
+        
+        # ============ ارتباط با ادمین ============
+        if any(w in msg for w in ['ادمین', 'پشتیبانی', 'پشتیبان', 'مدیر', 'صاحب']):
+            return "👨‍💻 ادمین Z208:\n@Shirzad2026\n\nهر سوال، مشکل یا سفارشی داشتی، مستقیماً باهاش در ارتباط باش! 😊"
+        
+        # ============ وبسایت ============
+        if any(w in msg for w in ['سایت', 'وبسایت', 'وب', 'لینک', 'آدرس']):
+            return "🌐 وبسایت Z208 Studio:\nhttps://zippy-semolina-6c6cec.netlify.app/\n\nحتماً سر بزن! 🚀"
+        
+        # ============ پاسخ عمومی هوشمند ============
         general_responses = [
-            "سوال جالبی پرسیدید! 🤔 می‌تونید بیشتر توضیح بدید تا بهتر بتونم کمکتون کنم؟",
-            "اوه! 🌟 اجازه بدید بیشتر به سوالتون فکر کنم. در این بین، می‌تونید از منوی ربات هم استفاده کنید.",
-            "راستش می‌خوام بهترین جواب رو بهت بدم! ✨ میشه یه کم بیشتر توضیح بدی؟",
-            "🧐 خب، ببینیم چطور می‌تونم راهنماییت کنم... سوالت رو بازتر مطرح می‌کنی؟"
+            f"جالب گفتی! 🤔 بیشتر توضیح میدی؟ دوست دارم بدونم بیشتر راجع بهش چی فکر می‌کنی.",
+            f"اوه! 🌟 این موضوع خیلی جالبه.\nراستی، امروز انیمه دیدی؟ من کلی پیشنهاد باحال دارم! 🎬",
+            f"آها! 🎯 خب، بذار ببینم چطور می‌تونم بهترین کمک رو بهت بکنم...",
+            f"می‌فهمم چی می‌گی! 💡 راستی، می‌دونستی Z208 همیشه آماده‌ست تا بهترین خدمات رو ارائه بده؟",
+            f"حرفات رو می‌فهمم! 😊 چیز دیگه‌ای هست که می‌تونم برات انجام بدم؟"
         ]
         return random.choice(general_responses)
+    
+    def get_conversation_history(self, user_id):
+        """دریافت تاریخچه"""
+        if user_id not in self.conversation_history:
+            self.conversation_history[user_id] = []
+        return self.conversation_history[user_id]
+    
+    def save_to_history(self, user_id, user_msg, bot_msg):
+        """ذخیره در تاریخچه"""
+        if user_id not in self.conversation_history:
+            self.conversation_history[user_id] = []
+        
+        self.conversation_history[user_id].append({
+            'user': user_msg,
+            'assistant': bot_msg,
+            'time': datetime.now().isoformat()
+        })
+        
+        if len(self.conversation_history[user_id]) > 50:
+            self.conversation_history[user_id] = self.conversation_history[user_id][-50:]
 
 
-ai_service = AIService()
+# نمونه سراسری
+super_ai = SuperAIService()
