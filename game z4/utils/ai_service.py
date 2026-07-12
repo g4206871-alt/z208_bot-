@@ -276,4 +276,4 @@ class SuperAIService:
 
 
 # نمونه سراسری
-super_ai = SuperAIService()
+ai_personality = AIPersonality()
